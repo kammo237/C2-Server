@@ -1,0 +1,249 @@
+# C2 Server — Security Hardening Reference
+
+## 1. Cryptography
+
+### Before
+A single Fernet key was hardcoded in both [server.py](file:///c:/Malware-Dev/C2%20server/server.py) and [agent.py](file:///c:/Malware-Dev/C2%20server/agent.py):
+
+```python
+SECRET_KEY = b'B9gEUjAh8XJvCR5O0-ukDOxEczt3YXDzkeL1wco73cE='
+cipher = Fernet(SECRET_KEY)
+```
+
+**Impact:** Extract that key from any agent binary → decrypt all historical and future traffic, impersonate any agent, forge task results.
+
+### After — RSA-bootstrapped Per-Agent Keys
+
+```mermaid
+sequenceDiagram
+    participant A as Agent
+    participant S as Server
+
+    A->>S: GET /pub
+    S-->>A: RSA-2048 public key (PEM)
+    Note over A: Generate random Fernet key
+    Note over A: RSA-OAEP encrypt it with server pubkey
+    A->>S: POST /api/register {agent_id, enc(session_key), timestamp_ms}
+    Note over S: RSA-decrypt → store session_key in SQLite
+    S-->>A: {token: HMAC(OPERATOR_TOKEN, agent_id)}
+    Note over A,S: All future traffic encrypted with this agent's key only
+```
+
+- Server generates a **fresh RSA-2048 key pair at every startup** — keys are never written to disk.
+- Each agent generates its own **random Fernet key** (AES-128-CBC + HMAC-SHA256) on startup.
+- The agent wraps its Fernet key with **RSA-OAEP-SHA256** before sending it — only the server's private key can unwrap it.
+- **No shared secret exists.** Compromise one agent → only that agent's session key is exposed.
+
+---
+
+## 2. Authentication & Replay Protection
+
+### Before
+```python
+headers = {
+    "Authorization": f"Bearer {AGENT_ID}",   # just a label — no verification
+}
+```
+
+### After — Per-Request HMAC
+
+Every beacon and result upload carries three headers:
+
+| Header | Value |
+|---|---|
+| `X-Agent-Id` | Agent UUID |
+| `X-Timestamp` | Unix milliseconds |
+| `X-Signature` | `HMAC-SHA256(session_key, "{agent_id}:{timestamp_ms}")` |
+
+The server recomputes the HMAC using the stored session key and rejects anything that doesn't match. Since only that agent and the server know the session key, no one else can produce a valid signature.
+
+**Replay protection — two layers:**
+1. **Timestamp window:** requests with a timestamp more than ±60 seconds from server time are instantly rejected.
+2. **Nonce cache:** the exact [(agent_id, timestamp_ms)](file:///c:/Malware-Dev/C2%20server/agent.py#239-254) pair is stored in memory for 120 seconds. A captured-and-replayed packet within the window is still rejected.
+
+### Operator vs. Agent Split
+
+`/api/push` requires a completely separate credential:
+
+```
+Authorization: Bearer <OPERATOR_TOKEN>
+```
+
+`OPERATOR_TOKEN` is loaded **only from an environment variable** — never hardcoded, never sent to agents. A compromised agent cannot push tasks to other agents.
+
+---
+
+## 3. Database — SQLite Schema
+
+`c2.db` is created automatically in the same directory as [server.py](file:///c:/Malware-Dev/C2%20server/server.py).
+
+```
+┌─────────────────────────────────────────────────┐
+│  agents                                         │
+│  ─────────────────────────────────────────────  │
+│  agent_id   TEXT  PK   — UUID                   │
+│  session_key BLOB      — Fernet key (plaintext)  │
+│  token      TEXT       — HMAC-derived            │
+│  registered REAL       — Unix timestamp          │
+│  last_seen  REAL       — updated on each beacon  │
+└─────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│  tasks                                          │
+│  ─────────────────────────────────────────────  │
+│  id         INT   PK   — auto-increment          │
+│  agent_id   TEXT       — FK → agents             │
+│  payload    TEXT       — JSON task dict          │
+│  status     TEXT       — pending | delivered     │
+│  created_at REAL                                 │
+└─────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│  results                                        │
+│  ─────────────────────────────────────────────  │
+│  id         INT   PK                            │
+│  agent_id   TEXT                                │
+│  output     TEXT       — shell output etc.       │
+│  received_at REAL                               │
+└─────────────────────────────────────────────────┘
+```
+
+**Why it matters vs. `tasks = {}`:**
+- Server restart → agents and queued tasks survive. No re-registration required.
+- Tasks move from `pending` → `delivered` when a beacon picks them up — you can track what has actually been sent.
+- `results` is a permanent audit log of everything agents reported back.
+- The `c2.db` file is a single portable file — easy to back up or move between machines.
+
+---
+
+## 4. Infrastructure
+
+| | Before | After |
+|---|---|---|
+| WSGI server | Flask dev (`app.run`) | `waitress` (production) |
+| `Server` header | `Werkzeug/3.x.x` | `nginx` (masquerade) |
+| Debug mode | On | Off |
+| Secrets | Hardcoded | Env vars only |
+
+---
+
+## 5. Hosting Options
+
+### Option A — VPS + nginx (Recommended)
+
+Best control / OPSEC balance. Cost: ~$6/mo.
+
+**Providers:** DigitalOcean, Vultr, Linode, Hetzner (cheapest). Pay with crypto if needed.
+
+**Architecture:**
+```
+Agent  ──HTTPS──►  nginx (VPS, port 443)
+                      │  TLS terminates here
+                      ▼
+               localhost:5000 (waitress)
+                      │
+                   c2.db
+```
+
+**Steps:**
+1. Spin up Ubuntu 22.04 VPS.
+2. Install: `apt install nginx python3 python3-pip certbot python3-certbot-nginx`
+3. Clone/copy your server files.
+4. Create a systemd service (see Section 6 below).
+5. Point a domain at the VPS IP and run: `certbot --nginx -d yourdomain.com`
+6. nginx config:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name yourdomain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+
+    # Drop fingerprinting headers
+    server_tokens off;
+    more_clear_headers Server;
+
+    location / {
+        proxy_pass         http://127.0.0.1:5000;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+    }
+}
+
+# Redirect HTTP → HTTPS
+server {
+    listen 80;
+    return 301 https://$host$request_uri;
+}
+```
+
+---
+
+### Option B — Redirector Chain (Multi-hop)
+
+Add a cheap "redirector" VPS between agents and the true server. Agents only know the redirector IP — the backend is never exposed. If the redirector gets burned, swap it out; the backend and DB are untouched.
+
+```
+Agent  ──HTTPS──►  Redirector VPS (nginx proxy)  ──HTTP──►  Backend VPS (waitress)
+                   (burnable, cheap, rotatable)              (never exposed)
+```
+
+Redirector nginx:
+```nginx
+location / {
+    proxy_pass http://<BACKEND_PRIVATE_IP>:5000;
+}
+```
+
+---
+
+### Option C — Domain Fronting via CDN
+
+Route beacon traffic through Cloudflare (or similar CDN). From the network's perspective, agents are talking to Cloudflare IP ranges — indistinguishable from normal web traffic. Hard to block without taking down a major CDN.
+
+**Trade-off:** Cloudflare can inspect/log traffic (no E2E TLS to your server unless you configure it right). Use Cloudflare's "Full (Strict)" SSL mode and keep Fernet encryption on bodies.
+
+---
+
+## 6. systemd Service (Linux)
+
+`/etc/systemd/system/c2.service`
+
+```ini
+[Unit]
+Description=C2 Server
+After=network.target
+
+[Service]
+User=c2user
+WorkingDirectory=/opt/c2
+Environment="OPERATOR_TOKEN=your-strong-secret-here"
+ExecStart=/opt/c2/venv/bin/python server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload
+systemctl enable c2
+systemctl start c2
+```
+
+---
+
+## 7. Pre-Deploy Checklist
+
+- [ ] Set `OPERATOR_TOKEN` to a cryptographically random string (≥32 chars)
+  ```bash
+  python3 -c "import secrets; print(secrets.token_hex(32))"
+  ```
+- [ ] Deploy nginx with TLS in front (without TLS, URIs and timing are still visible on the wire)
+- [ ] Set `SERVER_URL` in [agent.py](file:///c:/Malware-Dev/C2%20server/agent.py) to your VPS domain
+- [ ] Rebuild and redeploy all agents — the protocol has fully changed, old agents won't authenticate
+- [ ] Back up `c2.db` regularly (cron job copying to encrypted offsite storage)
+- [ ] (Optional) Certificate pin inside [agent.py](file:///c:/Malware-Dev/C2%20server/agent.py) by passing `verify=<path>` to session calls
