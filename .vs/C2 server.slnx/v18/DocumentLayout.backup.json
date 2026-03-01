@@ -1,0 +1,37 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\kamran\\source\\repos\\C2 server\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{94179641-CE1D-4241-A4DE-DE2E981DD7DC}|C2 server\\C2 server.pyproj|C:\\Users\\kamran\\source\\repos\\C2 server\\C2 server\\C2_server.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{94179641-CE1D-4241-A4DE-DE2E981DD7DC}|C2 server\\C2 server.pyproj|solutionrelative:C2 server\\C2_server.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "C2_server.py",
+              "DocumentMoniker": "C:\\Users\\kamran\\source\\repos\\C2 server\\C2 server\\C2_server.py",
+              "RelativeDocumentMoniker": "C2 server\\C2_server.py",
+              "ToolTip": "C:\\Users\\kamran\\source\\repos\\C2 server\\C2 server\\C2_server.py",
+              "RelativeToolTip": "C2 server\\C2_server.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "00000000-0000-0000-0000-000000000000.000000|iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAKjSURBVDhPpZQxSFtRFIb/\u002B14SWxvtC3RIO7TgFIrQFFMqNCU4SJMpipQWdOvUoUhByOhUiJPYJYODk1MmcVCnDH2gBYtB0tLSoQ62BlrwJQRMX3zv9pybl5o0ihV/OJyTc\u002B/9OOfcdyNwhoa2zXjIV1kMadWIoVsI6RWEtAoM9iq2TmJa96NRNm4chDXvfIcGtj/GIbQ1KbWIVBkBKcnYe\u002BZCI6/BlRocqfOmsPXzZqkLGNr6EZeOWHOlCLYOOnRIeRXrOGaDjob0waba6rKH1giqIdjZ8t2hnP/OwIuA7vgDwgZbj2goH/C8X3kyRpF/8LAXk5PX0Ksd4Yr4veeRSGY1juijY4q4y/\u002B25NNb8v33uNw9iMnPB/e\u002BNVtmGPQ1mpsaRiaTwdLSEubn5xGLxdSWdDqNXC6H2dlZBINBlWM14EPV7UPF6YflXqeuWzDIv7uSySTW19exsrKC1dVVTExMYGZmBsvLy6jX6yrXUkP6UXX6CNaPQ4eB0PLtsJai0SgSiQT29/cxNjaGbDYL0zQxNzeHkZERbxdgE7BCMItgDOWWw82lbhWLRYyOjipoJBJROcMwMD09rWIWV8ggBh46hgKeqo2NDdWyZVlYWFjA1NQU8vk8Njc3UavVvF1ehWp\u002BTaiAWePbaupVCth5h3A4rEA8r3YNDg6qanmtpcj4MJ68eQafOKbq3L1TKyyXy10wVqlU6oCxbJdb5nZ5hupSLidbBqjV5idD0F\u002BXB9LTOyQYza9mucZrn5fvUKFQ8KITtX8q7bJdVWHND5n6EBs26ZXQpbTs/uOup3WeXU2N27e3vtDjaKrzlt9mgK\u002B73o/zJaTjCPto0f2089JL/QO8kAR9jE4K8X5q80R8KfwPc0GdDmNpVPdz8heBls\u002BCAcAfvkBQazDItHEAAAAASUVORK5CYII=",
+              "WhenOpened": "2026-02-23T14:53:25.63Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
