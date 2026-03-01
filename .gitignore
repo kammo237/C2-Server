@@ -27,3 +27,12 @@ env/
 Thumbs.db
 .vscode/
 .idea/
+.vs/
+*.slnx
+*.pyproj
+*.suo
+*.user
+*.db
+server/*.db
+agent/*.tmp
+operator/*.log

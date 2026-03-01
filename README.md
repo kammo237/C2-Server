@@ -25,11 +25,16 @@ A hardened, Python-based Command and Control (C2) framework featuring an advance
 ## Project Structure
 
 ```text
-├── agent.py         # Client-side beacon with self-destruct & browser spoofing
-├── server.py        # Hardened listener with RSA key generation & task queue
-├── cli.py           # [NEW] Operator console for interactive agent management
-├── requirements.txt # Project dependencies (v0.2 updated)
-├── c2.db            # SQLite database for persistence
+├── agent/           # Client-side beacon
+│   └── agent.py     
+├── server/          # Hardened listener and task queue
+│   ├── server.py    
+│   └── c2.db        
+├── operator/        # Operator console for interaction
+│   └── cli.py       
+├── tests/           # Integration tests
+│   └── test_flow.py 
+├── requirements.txt # Project dependencies
 └── README.md        # Documentation
 ```
 
@@ -45,25 +50,25 @@ pip install -r requirements.txt
 ```
 
 ### 2. Start the Server
-The server requires an `OPERATOR_TOKEN` for the CLI to authenticate.
+The server requires an `OPERATOR_TOKEN` for the CLI to authenticate. Run it from the `server` directory.
 
 ```bash
 $env:OPERATOR_TOKEN="your_secret_here"
-python server.py
+python server/server.py
 ```
 
 ### 3. Start the Agent
-The agent will register and begin beaconing automatically.
+Run the agent from the root or the `agent` directory.
 
 ```bash
-python agent.py
+python agent/agent.py
 ```
 
 ### 4. Manage with CLI
 Launch the interactive console to push tasks and view results.
 
 ```bash
-python cli.py
+python operator/cli.py
 ```
 
 ## License
