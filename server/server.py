@@ -54,7 +54,7 @@ if not OPERATOR_TOKEN:
         "Set it before starting the server."
     )
 
-C2_HOST: str = os.environ.get("C2_HOST", "192.168.0.109")
+C2_HOST: str = os.environ.get("C2_HOST", "0.0.0.0")
 C2_PORT: int = int(os.environ.get("C2_PORT", "5000"))
 
 # Replay window: reject requests whose timestamp differs > this many seconds.
