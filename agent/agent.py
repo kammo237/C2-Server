@@ -35,7 +35,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 # ---------------------------------------------------------------------------
 # Configuration (edit these for your deployment)
 # ---------------------------------------------------------------------------
-SERVER_URL = "http://192.168.0.109:5000"
+SERVER_URL = "http://0.0.0.0:5000"
 
 PUBKEY_ENDPOINT   = "/pub"
 REGISTER_ENDPOINT = "/api/register"
