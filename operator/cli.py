@@ -3,7 +3,7 @@ import time
 import os
 import getpass
 
-SERVER_URL = "http://192.168.0.109:5000"
+SERVER_URL = "http://0.0.0.0:5000"
 
 
 # ---------------- AUTH ----------------
